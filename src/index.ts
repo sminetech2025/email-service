@@ -15,11 +15,29 @@ const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
 // Security middleware
 app.use(helmet());
-app.use(cors({
-  origin: corsOrigin,
-  methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
+// Replace the existing cors middleware configuration
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    const allowedOrigins = corsOrigin.split(',').map(o => o.trim());
+    
+    logger.info('CORS Request', {
+      requestOrigin: origin,
+      allowedOrigins,
+      corsOrigin
+    });
+
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 
 // Configure rate limiting from environment variables
 const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10); // 15 minutes default
@@ -62,6 +80,18 @@ app.get('/health', (_: Request, res: Response) => {
   res.json({ 
     status: 'ok',
     timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/debug/cors', (req: Request, res: Response) => {
+  res.json({
+    allowedOrigins: corsOrigin.split(','),
+    requestOrigin: req.headers.origin,
+    headers: req.headers,
+    env: {
+      corsOrigin,
+      nodeEnv: process.env.NODE_ENV
+    }
   });
 });
 
